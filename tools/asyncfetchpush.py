@@ -3,7 +3,14 @@ import time
 import sys
 import os
 import grequests
-
+import cStringIO
+import pdb
+#REMOVE ME
+import json
+#
+#DISABLE ALL WARNINGS (Lazy)
+import warnings
+warnings.filterwarnings("ignore")
 global pbar
 
 '''
@@ -28,26 +35,50 @@ class AsyncGetPush(grequests.AsyncRequest):
         self.url = url
         self.filepath = filepath
         self.response = False
+        self.filehandle = None
+        self.data = cStringIO.StringIO
+        self.headers = {}
+        self.rcode = 0
 
         if 'timeout' in kwargs:
             self.timeout = kwargs['timeout']
 
-        self.request = grequests.AsyncRequest(self.method, self.url,
-                hooks=dict(response=self.handle_response), timeout=self.timeout)
+        if 'auth' in kwargs:
+            self.auth = kwargs['auth']
+
+        self.construct_request()
 
         #Use a filehandle instead of a filepath
-        self.filehandle = kwargs.pop('filehandle', None)
+        '''
         if self.filehandle is None:
-                self.filehandle = open(self.filepath, 'wb')
-
+            self.filehandle = kwargs.pop('filehandle', None)
+            if self.filehandle is None:
+                #self.filehandle = open(self.filepath, 'wb')
+        '''
+    def construct_request(self):
+        if self.method == 'GET':
+            self.request = grequests.AsyncRequest(self.method, self.url,
+                    hooks=dict(response=self.handle_response),
+                    timeout=self.timeout, auth=self.auth)
+        elif self.method == 'PUT':
+            self.filehandle = open (self.filepath, 'rb')
+            self.data = self.filehandle.read()
+            self.request = grequests.AsyncRequest(self.method, self.url,
+                    data=self.data, hooks=dict(response=self.handle_response),
+                    timeout=self.timeout, auth=self.auth)
+            self.filehandle.close()
+        else:
+            self.request = grequests.AsyncRequest(self.method, self.url, timeout=self.timeout,
+                    auth=self.auth, hooks=dict(response=self.handle_response))
     #Borked request, requires rerequesting
     def rerequest(self):
-        self.request = grequests.AsyncRequest(self.method, self.url,
-                hooks=dict(response=self.handle_response), timeout=self.timeout)
+        self.construct_request()
 
+    #Handle the HTTP response
     def handle_response(self, r, **kwargs):
         global pbar
-        if r.status_code == 200:
+        if r.status_code == 200 or r.status_code == 201:
+            self.headers = r.headers
             self.response = True
         else:
             self.response = False
@@ -56,8 +87,16 @@ class AsyncGetPush(grequests.AsyncRequest):
             self.filehandle.write(r.content)
             self.filehandle.close()
             pbar.update(pbar.currval+1)
+        #Requests has already read the file contents, close the fh
+        elif self.method is "PUT" and self.response:
+            self.data = None
+            self.filehandle.close()
+            pbar.update(pbar.currval+1)
+        elif not self.response:
+            self.rcode = r.status_code
+            raise Exception("HTTP Request failed with :" + str(r.status_code))
         else:
-            raise Exception("HTTP Request failed with :" + r.status_code)
+            pbar.update(pbar.currval+1)
 
 
 '''
@@ -92,13 +131,20 @@ Example:
 '''
 
 class HttpGrabberPusher(object):
-    def __init__(self, method, comburlafile=None, limit=150, timeout=10, retries=3):
+    def __init__(self, method, comburlafile=None,
+                limit=150,
+                timeout=10,
+                retries=3,
+                username=None,
+                password=None):
         self.method = method
         self.requestlist = []
         self.failedrequests = []
         self.limit = limit
         self.timeout = timeout
         self.retries = retries
+        self.username = username
+        self.password = password
         self.original = []
 
         if comburlafile:
@@ -112,8 +158,11 @@ class HttpGrabberPusher(object):
         for key in dic:
             self.requestlist.append(
                     AsyncGetPush(
-                        self.method, key, dic[key],
-                        timeout=self.timeout
+                        self.method,
+                        key,
+                        dic[key],
+                        timeout=self.timeout,
+                        auth=(self.username, self.password) if self.username and self.password else None
                         ))
     #Recurse
     def make_requests_r(self, rlist, count=0):
@@ -129,6 +178,10 @@ class HttpGrabberPusher(object):
                 time.sleep(10)
                 pool = grequests.Pool(1)
                 (r.rerequest() for r in rlist)
+
+            #Hack to turn off ssl certs
+            for r in rlist:
+                r.request.session.verify = False
 
             jobs = [grequests.send(r.request, pool, stream=False) for r in rlist]
             grequests.gevent.joinall(jobs)
@@ -169,3 +222,21 @@ class HttpGrabberPusher(object):
         pbar.finish()
         if len(fr) > 0:
             print "Still Failures"
+            self.failedrequests = fr
+
+    def request_header_dictionary(self):
+        request_header_dict = {}
+        for r in self.requestlist:
+            request_header_dict.update({r.url:r.headers})
+        return request_header_dict
+
+    def request_response_dictionary(self):
+        request_response_dict = {}
+        for r in self.requestlist:
+            request_response_dict.update({r.url:r.response})
+        return request_response_dict
+
+    def request_failed_dictionary(self):
+        failed = {}
+        for f in self.failedrequests:
+            failed.update({f.url:f.rcode})
