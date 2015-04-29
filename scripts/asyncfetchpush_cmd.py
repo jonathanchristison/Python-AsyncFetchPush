@@ -3,7 +3,8 @@ import optparse
 import json
 import sys
 import os
-import asyncfetchpush
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
+from tools import asyncfetchpush
 import time
 import math
 import getpass
