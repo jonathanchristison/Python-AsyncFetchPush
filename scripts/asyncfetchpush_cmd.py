@@ -107,7 +107,7 @@ class HTTPRequests:
         self.retries = 3
 
         #Logging stuff
-        self.logfile = os.path.join(/tmp/, "async.log.json")
+        self.logfile = os.path.join("/tmp/", "async.log.json")
         self.lf_json_all = self._logfile_json()
         self.last_log_key = self._lastlogentry()
         self.log_time = time.time()
