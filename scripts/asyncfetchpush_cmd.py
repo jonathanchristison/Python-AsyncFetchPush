@@ -173,9 +173,12 @@ class HTTPRequests:
             self.retries = 0
             logfiler = {}
             #Try and load logfile first, this will save calculating the filesizes
-            for url, contents in self.lf_json_all[self.last_log_key].iteritems():
-                if contents['method'] == 'HEAD' or contents['method'] == 'PUT':
-                    logfiler.update({url:HTTPRequestHelper(**contents)})
+            try:
+                for url, contents in self.lf_json_all[self.last_log_key].iteritems():
+                    if contents['method'] == 'HEAD' or contents['method'] == 'PUT':
+                        logfiler.update({url:HTTPRequestHelper(**contents)})
+            except KeyError:
+                print "Cannot load previous log entry " + str(self.last_log_key)
 
             for method, contents in j['HTTPAsyncData'].iteritems():
                 if method == 'HEAD' or method == 'PUT':
@@ -221,7 +224,7 @@ class HTTPRequests:
         #Create the request structure
         if not self.async_requests.has_key(rh.method):
             self.async_requests.update({rh.method:
-                asyncfetchpush.HttpGrabberPusher(rh.method, limit=200, retries=self.retries, username=self.username, password=self.password)})
+                asyncfetchpush.HttpGrabberPusher(rh.method, limit=10, timeout=30, retries=self.retries, username=self.username, password=self.password)})
 
         self.async_requests[rh.method].append({url:rh.filepath})
         '''
