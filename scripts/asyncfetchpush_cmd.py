@@ -107,7 +107,7 @@ class HTTPRequests:
         self.retries = 3
 
         #Logging stuff
-        self.logfile = os.path.join("/tmp/", "async.log.json")
+        self.logfile = "async.log.json"
         self.lf_json_all = self._logfile_json()
         self.last_log_key = self._lastlogentry()
         self.log_time = time.time()
@@ -206,7 +206,7 @@ class HTTPRequests:
                         self.request_objects.update({url:HTTPRequestHelper(method,
                             filepath)})
                 except Exception as e:
-                    print "Exception" + e + " " + method + " could not be iterated, skipping"
+                    print "Exception" + str(e) + " " + str(method) + " could not be iterated, skipping"
             self._build_async_reqs()
         self._write_to_log()
 
