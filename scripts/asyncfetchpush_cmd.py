@@ -99,7 +99,7 @@ class HTTPRequests:
         self.async_requests = {}
 
         self.username = ""
-        self.pasword = ""
+        self.password = ""
         self.dry = True
         self.basedir = ""
         self.maxrequestsize = 0
