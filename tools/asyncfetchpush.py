@@ -12,7 +12,7 @@ import json
 import warnings
 warnings.filterwarnings("ignore")
 global pbar
-
+import pdb
 '''
 Fast implementation of HTTP GET/POST/PUT
 
@@ -49,12 +49,12 @@ class AsyncGetPush(grequests.AsyncRequest):
         self.construct_request()
 
         #Use a filehandle instead of a filepath
-        '''
+
         if self.filehandle is None:
             self.filehandle = kwargs.pop('filehandle', None)
-            if self.filehandle is None:
-                #self.filehandle = open(self.filepath, 'wb')
-        '''
+            if self.filehandle is None and self.method == 'GET':
+                self.filehandle = open(self.filepath, 'wb')
+
     def construct_request(self):
         if self.method == 'GET':
             self.request = grequests.AsyncRequest(self.method, self.url,
@@ -83,7 +83,7 @@ class AsyncGetPush(grequests.AsyncRequest):
         else:
             self.response = False
 
-        if self.method is "GET" and self.response:
+        if self.method == 'GET' and self.response:
             self.filehandle.write(r.content)
             self.filehandle.close()
             pbar.update(pbar.currval+1)
