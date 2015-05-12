@@ -88,7 +88,7 @@ class AsyncGetPush(grequests.AsyncRequest):
             self.filehandle.close()
             pbar.update(pbar.currval+1)
         #Requests has already read the file contents, close the fh
-        elif self.method is "PUT" and self.response:
+        elif self.method == 'PUT' and self.response:
             self.data = None
             self.filehandle.close()
             pbar.update(pbar.currval+1)
