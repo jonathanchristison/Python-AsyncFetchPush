@@ -9,10 +9,8 @@ import time
 import math
 import getpass
 import hashlib
-
 from collections import defaultdict
 from collections import OrderedDict
-
 ''' General Utils '''
 #############################################################
 def tree():
@@ -60,6 +58,10 @@ def getJson(o):
         print "Unexpected error:", sys.exc_info()[0]
         return {}
 
+def merge_dictionaries(first, second):
+    ret = first.copy()
+    ret.update(second)
+    return ret
 #############################################################
 '''
 This class encapsulates multiple HTTP requests
@@ -73,7 +75,7 @@ request_objects - URL : HTTPRequestHelper
         - timestamp (of completed request)
         - method (GET, PUT, DELETE etc)
 
-async_requests - METHOD(+num) : AsyncRequestObj
+async_requests - METHOD : [AsyncRequestObj]
     These request objects are generated from the
     request_objects dict. The AsyncRequestObjects
     manage and make the actual requests. The object
@@ -102,10 +104,11 @@ class HTTPRequests:
         self.password = ""
         self.dry = True
         self.basedir = ""
-        self.maxrequestsize = 0
-        self.maxrequestsize_c = 0
+        self.maxrequestsize = options.size * 1048576
         self.retries = 3
 
+        #Total filsize of requests
+        self.request_total_filesize = {'HEAD':0, 'PUT':0, 'GET':0}
         #Logging stuff
         self.logfile = "async.log.json"
         self.lf_json_all = self._logfile_json()
@@ -221,26 +224,28 @@ class HTTPRequests:
             self._build_async_req(url,rh)
 
     def _build_async_req(self, url, rh):
-        #Create the request structure
-        if not self.async_requests.has_key(rh.method):
-            self.async_requests.update({rh.method:
-                asyncfetchpush.HttpGrabberPusher(rh.method, limit=10, timeout=30, retries=self.retries, username=self.username, password=self.password)})
+        method = rh.method
 
-        self.async_requests[rh.method].append({url:rh.filepath})
-        '''
-        #if the max size has been reached make more key+count
-        if self.request_total >= self.maxrequestsize:
-            i = 0
-            while true:
-                if self.async_request.has_key(rh.method+str(i)):
-                    i=+1
-                else:
-                    self.async_request.update(rh.method+str(i))
-                        asyncfetchpush.HttpGrabberPusher(rh.method, limit=200)
-                        break
+        #Create the async request if it doesnt exist
+        if not self.async_requests.has_key(method):
+            self.async_requests.update({method:
+                [asyncfetchpush.HttpGrabberPusher(rh.method, limit=250,
+                    timeout=90, retries=self.retries, username=self.username,
+                    password=self.password)]})
 
-            if self.
-        else:'''
+        #Last item in request list
+        reqlist = self.async_requests[method]
+        reqlist_cur = self.async_requests[method][-1]
+        #Add request to last item in asyncrequest list if within size else create new request
+        if (self.request_total_filesize[method] + rh.filesize) > self.maxrequestsize and self.maxrequestsize > 0:
+            reqlist.append(asyncfetchpush.HttpGrabberPusher(rh.method,
+                limit=250, timeout=90, retries=self.retries,
+                username=self.username, password=self.password))
+            reqlist_cur = reqlist[-1]
+            self.request_total_filesize[method] = 0
+
+        reqlist_cur.append({url:rh.filepath})
+        self.request_total_filesize[method] += rh.filesize
 
 
 
@@ -258,18 +263,20 @@ class HTTPRequests:
 
     def make_requests(self):
         try:
-            for method, requests in self.async_requests.iteritems():
-                if not self.options.dry:
-                    requests.make_requests()
-                    responses = requests.request_response_dictionary()
-                    #failed = requests.request_failed_dictionary()
-                    for url, response in responses.iteritems():
-                        if response is True:
-                            self.request_objects[url].stamp()
+            for method, chunks in self.async_requests.iteritems():
+                for requests in chunks:
+                    if not self.options.dry:
+                        print "Making requests..\n"
+                        requests.make_requests()
+                        responses = requests.request_response_dictionary()
+                        #failed = requests.request_failed_dictionary()
+                        for url, response in responses.iteritems():
+                            if response is True:
+                                self.request_objects[url].stamp()
 
-                    #for url, rcode in failed.iteritems()
-                    #    if rcode == 400:
-                    #        print "{0} failed with err {1}, deleting remote failed"
+                        #for url, rcode in failed.iteritems()
+                        #    if rcode == 400:
+                        #        print "{0} failed with err {1}, deleting remote failed"
 
             if self.options.check or self.options.checkonly:
                 self._check_uploads()
@@ -287,8 +294,10 @@ class HTTPRequests:
             if rh.method == 'PUT':
                 rh.change_to_check()
                 self._build_async_req(url, rh)
-        self.async_requests['HEAD'].make_requests()
-        headers = self.async_requests['HEAD'].request_header_dictionary()
+        headers = {}
+        for head in self.async_requests['HEAD']:
+            head.make_requests()
+            headers = merge_dictionaries(headers,head.request_header_dictionary())
 
         for url in headers.keys():
             try:
@@ -311,9 +320,11 @@ class HTTPRequests:
         tnr = 0
         for method in self.async_requests.keys():
             ret += "\n\n" + str(method) + ":\n\t"
-            for request in self.async_requests[method].requestlist:
-                ret += "\n\t" + str(request.url)
-                tnr += 1
+            for i in range(0,len(self.async_requests[method])):
+                ret += "\n\n Chunk {} of {}\n\t".format(i, len(self.async_requests[method]))
+                for request in self.async_requests[method][i].requestlist:
+                    ret += "\n\t" + str(request.url)
+                    tnr += 1
 
         tfs = 0
         for url, rh in self.request_objects.iteritems():
@@ -438,7 +449,7 @@ def parse_args():
     putopt.add_option("", "--put", dest="pstdin",
             help=("Read a list of files from stdin, newline seperated"), action="store_true", default=False)
 
-    putopt.add_option('', "--size", type="int", help=("Aim to send number of files to send in MiB"))
+    putopt.add_option('', "--size", type="int", default=0, help=("Aim to send number of files to send in MiB"))
 
     putstdinopt = optparse.OptionGroup(op, "HTTP PUT STDIN options",
             "Options for pusing files via stdin")
