@@ -4,7 +4,6 @@ import sys
 import os
 import grequests
 import cStringIO
-import pdb
 #REMOVE ME
 import json
 #
@@ -12,7 +11,6 @@ import json
 import warnings
 warnings.filterwarnings("ignore")
 global pbar
-import pdb
 '''
 Fast implementation of HTTP GET/POST/PUT
 

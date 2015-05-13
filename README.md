@@ -91,6 +91,7 @@ asynfetchpush
 + Have user hookable response callbacks
 + Standardise response callbacks, remove the response bool and replace with the actual response (might be more memory intensive)
 + Replace grequests/gevents with asyncio
++ Fix spaghetti code
 
 asyncfetchpush_cmd
 -------------------
@@ -99,5 +100,5 @@ asyncfetchpush_cmd
 + Abstract option handling and file handling from HTTPRequests to allow HTTPRequests class to be used in scripts that dont need json such as the Nexus upload script
 + implement flat file parsing + baseurl input (STDIN and file arguments)
 + Improve log file, various bugs where the log file is not read or overwritten with null
-
++ Fix spaghetti code
 
